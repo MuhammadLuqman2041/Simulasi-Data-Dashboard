@@ -1,0 +1,6 @@
+Skenario,T_recover_mean,T_recover_std,T_recover_p10,T_recover_p90,K_final_mean,K_final_std,K_max_mean,P_selesai
+Tanpa Koping,80.0,0.0,80.0,80.0,0.988,0.023,1.0,0.0
+Mediasi Preventif,72.249,5.156,68.333,76.667,0.229,0.123,1.0,0.333
+Mediasi Reaktif,65.89,7.629,56.0,76.333,0.634,0.067,0.942,0.0
+Mediator Eksternal,34.152,6.799,25.667,42.7,0.0,0.0,1.0,1.0
+Pendekatan Spiritual,54.652,1.992,52.0,57.0,0.0,0.0,1.0,1.0
