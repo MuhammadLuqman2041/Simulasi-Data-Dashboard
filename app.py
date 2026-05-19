@@ -1,4 +1,3 @@
-
 import os
 from pathlib import Path
 import numpy as np
@@ -11,31 +10,8 @@ from scipy.stats import kruskal, mannwhitneyu
 st.set_page_config(page_title="Dashboard Simulasi Waris Islam", page_icon="⚖️", layout="wide")
 
 # ---------------------------------------------------------------------
-# Theme-aware colors
+# Palet Warna Kustom (Tetap Konsisten)
 # ---------------------------------------------------------------------
-def is_dark_mode():
-    try:
-        return st.get_option("theme.base") == "dark"
-    except Exception:
-        return True
-
-DARK = is_dark_mode()
-
-if DARK:
-    BG = "#111111"
-    CARD = "#1A1A1A"
-    TEXT = "#F2F2F2"
-    MUTED = "#B6B6B6"
-    GRID = "#2A2A2A"
-    INPUT = "#222222"
-else:
-    BG = "#F8F5F6"
-    CARD = "#FFFFFF"
-    TEXT = "#24161A"
-    MUTED = "#6E5A5F"
-    GRID = "#E7DCDD"
-    INPUT = "#FFFFFF"
-
 MAROON = "#7B1E2B"
 MAROON_2 = "#5E1620"
 MAROON_3 = "#A33A4A"
@@ -46,29 +22,62 @@ PURPLE = "#6A1B9A"
 RED = "#C62828"
 GRAY = "#7A7A7A"
 
+# ---------------------------------------------------------------------
+# CSS Injeksi Menggunakan Variabel CSS Native Streamlit
+# ---------------------------------------------------------------------
 st.markdown(
     f"""
     <style>
-    .stApp {{ background: {BG}; color: {TEXT}; }}
-    section[data-testid="stSidebar"] {{ background: linear-gradient(180deg, {MAROON_2}, {MAROON}); color: white; }}
+    /* Menggunakan linear-gradient konstan untuk sidebar */
+    section[data-testid="stSidebar"] {{ 
+        background: linear-gradient(180deg, {MAROON_2}, {MAROON}); 
+    }}
+    /* Memastikan teks di dalam sidebar yang menggunakan markdown berwarna putih agar kontras */
+    section[data-testid="stSidebar"] .stMarkdown, section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 {{
+        color: white !important;
+    }}
+    
     .block-container {{ padding-top: 1.1rem; padding-bottom: 2rem; }}
+    
     .title-card {{
         background: linear-gradient(135deg, {MAROON_2}, {MAROON});
-        color: white; padding: 1.15rem 1.35rem; border-radius: 18px;
+        color: white !important; 
+        padding: 1.15rem 1.35rem; 
+        border-radius: 18px;
         box-shadow: 0 10px 25px rgba(123, 30, 43, 0.18);
         border: 1px solid rgba(255,255,255,0.08);
     }}
+    .title-card h1, .title-card p {{
+        color: white !important;
+    }}
+    
+    /* Menggunakan variabel CSS native Streamlit agar otomatis adaptif tanpa re-run */
     .sub-card {{
-        background: {CARD}; color: {TEXT}; padding: 1rem 1.2rem; border-radius: 16px;
-        box-shadow: 0 6px 18px rgba(0,0,0,0.05); border: 1px solid {'#2A2A2A' if DARK else '#eadfe1'};
+        background-color: var(--secondary-background-color); 
+        color: var(--text-color); 
+        padding: 1rem 1.2rem; 
+        border-radius: 16px;
+        box-shadow: 0 6px 18px rgba(0,0,0,0.05); 
+        border: 1px solid var(--border-color);
+        margin-bottom: 1rem;
     }}
+    
     .metric-box {{
-        background: {CARD}; color: {TEXT}; padding: 0.9rem 1rem; border-radius: 14px;
-        border-left: 6px solid {MAROON}; box-shadow: 0 4px 14px rgba(0,0,0,0.04);
-        border: 1px solid {'#2A2A2A' if DARK else '#eadfe1'};
+        background-color: var(--secondary-background-color); 
+        padding: 0.9rem 1rem; 
+        border-radius: 14px;
+        border-left: 6px solid {MAROON} !important; 
+        box-shadow: 0 4px 14px rgba(0,0,0,0.04);
+        border: 1px solid var(--border-color);
+        margin-bottom: 1rem;
     }}
-    .small-note {{ color: {MUTED}; font-size: 0.92rem; }}
-    div[data-testid="stDataFrame"] {{ background: {CARD}; }}
+    
+    /* Memperbaiki visual teks metric bawaan di dalam custom box */
+    .metric-box div[data-testid="stMetricValue"] {{
+        color: var(--text-color) !important;
+    }}
+    
+    .small-note {{ color: var(--text-color); opacity: 0.8; font-size: 0.92rem; }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -83,6 +92,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+st.write("") # Spacer
 
 st.caption("Dashboard ini otomatis membaca hasil Monte Carlo dari CSV dan menyesuaikan kontras saat mode gelap/terang berubah.")
 
@@ -129,15 +139,11 @@ st.sidebar.markdown("---")
 st.sidebar.markdown("### Kontrol Tampilan")
 show_threshold = st.sidebar.checkbox("Tampilkan ambang konflik (0.7)", value=True)
 show_values = st.sidebar.checkbox("Tampilkan label angka pada grafik", value=True)
-show_theme_info = st.sidebar.checkbox("Tampilkan info theme", value=False)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Sumber Data")
 st.sidebar.write(f"- CSV: `{source_info}`")
 st.sidebar.write("- Fallback: aktif bila CSV tidak ditemukan")
-
-if show_theme_info:
-    st.sidebar.write(f"- Mode terdeteksi: {'Dark' if DARK else 'Light'}")
 
 # ---------------------------------------------------------------------
 # Helpers
@@ -159,9 +165,8 @@ best_recover = summary_df.loc[summary_df["T_recover_mean"].idxmin(), "Skenario"]
 best_finish = summary_df.loc[summary_df["K_final_mean"].idxmin(), "Skenario"]
 best_success = summary_df.loc[summary_df["P_selesai"].idxmax(), "Skenario"]
 
-plot_bg = CARD
-paper_bg = CARD
-font_color = TEXT
+# Biarkan Plotly membaca tema dasar yang sedang aktif secara otomatis
+theme_plotly = "streamlit"
 
 # ---------------------------------------------------------------------
 # Ringkasan
@@ -194,15 +199,14 @@ if view == "Ringkasan":
             barmode="group",
             title="Perbandingan Metrik Utama",
             height=520,
-            plot_bgcolor=plot_bg,
-            paper_bgcolor=paper_bg,
-            font=dict(color=font_color),
+            template=theme_plotly,
             legend_title_text="Metrik",
             margin=dict(l=20, r=20, t=60, b=20),
         )
         if show_threshold:
             fig.add_hline(y=0.7, line_dash="dash", line_color=RED)
         st.plotly_chart(fig, use_container_width=True)
+        
     with right:
         fig2 = go.Figure()
         fig2.add_trace(go.Scatter(
@@ -220,9 +224,7 @@ if view == "Ringkasan":
         fig2.update_layout(
             title="Rata-rata Waktu Pemulihan",
             height=520,
-            plot_bgcolor=plot_bg,
-            paper_bgcolor=paper_bg,
-            font=dict(color=font_color),
+            template=theme_plotly,
             margin=dict(l=20, r=20, t=60, b=20),
         )
         st.plotly_chart(fig2, use_container_width=True)
@@ -251,7 +253,7 @@ elif view == "Visualisasi":
                 color_discrete_sequence=[MAROON, ORANGE, BLUE],
                 title="Ringkasan Distribusi Metrik"
             )
-            fig.update_layout(height=520, plot_bgcolor=plot_bg, paper_bgcolor=paper_bg, font=dict(color=font_color))
+            fig.update_layout(height=520, template=theme_plotly)
             st.plotly_chart(fig, use_container_width=True)
         with c2:
             fig = px.bar(
@@ -262,7 +264,7 @@ elif view == "Visualisasi":
                 title="Probabilitas Resolusi (P_selesai)"
             )
             fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
-            fig.update_layout(height=520, showlegend=False, plot_bgcolor=plot_bg, paper_bgcolor=paper_bg, font=dict(color=font_color))
+            fig.update_layout(height=520, showlegend=False, template=theme_plotly)
             st.plotly_chart(fig, use_container_width=True)
 
     with tab2:
@@ -275,8 +277,7 @@ elif view == "Visualisasi":
                 y=[summary_df.loc[idx, "T_recover_mean"], summary_df.loc[idx, "K_final_mean"], summary_df.loc[idx, "K_max_mean"]],
                 marker_color=color_map.get(sc, GRAY)
             ))
-        fig.update_layout(barmode='group', title='Perbandingan Metrik Utama per Skenario', height=500,
-                          plot_bgcolor=plot_bg, paper_bgcolor=paper_bg, font=dict(color=font_color))
+        fig.update_layout(barmode='group', title='Perbandingan Metrik Utama per Skenario', height=500, template=theme_plotly)
         st.plotly_chart(fig, use_container_width=True)
 
     with tab3:
@@ -285,7 +286,7 @@ elif view == "Visualisasi":
         fig.add_annotation(text="Gunakan gambar state_chart.png dan tabel_atribut.png di laporan", x=0.5, y=0.5, showarrow=False, font=dict(size=18, color=MAROON))
         fig.update_xaxes(visible=False)
         fig.update_yaxes(visible=False)
-        fig.update_layout(title='Konseptualisasi', height=360, plot_bgcolor=plot_bg, paper_bgcolor=paper_bg, font=dict(color=font_color))
+        fig.update_layout(title='Konseptualisasi', height=360, template=theme_plotly)
         st.plotly_chart(fig, use_container_width=True)
 
 # ---------------------------------------------------------------------
@@ -297,15 +298,11 @@ elif view == "Analisis Statistik":
 
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown('<div class="metric-box">', unsafe_allow_html=True)
-        st.metric("Kruskal-Wallis H", "4501.846")
-        st.metric("p-value", "0.00e+00")
-        st.markdown('</div>', unsafe_allow_html=True)
+        metric_card("Kruskal-Wallis H", "4501.846")
+        metric_card("p-value", "0.00e+00")
     with c2:
-        st.markdown('<div class="metric-box">', unsafe_allow_html=True)
-        st.metric("Kesimpulan", "Signifikan")
-        st.metric("Alpha", "0.05")
-        st.markdown('</div>', unsafe_allow_html=True)
+        metric_card("Kesimpulan", "Signifikan")
+        metric_card("Alpha", "0.05")
 
     st.markdown("### Interpretasi")
     st.write(
@@ -319,7 +316,7 @@ elif view == "Analisis Statistik":
         std_val = max(summary_df.loc[summary_df['Skenario'] == sc, 'T_recover_std'].values[0], 0.8)
         y = np.random.normal(mean_val, std_val, 120)
         fig.add_trace(go.Box(y=y, name=sc, marker_color=color_map.get(sc, GRAY)))
-    fig.update_layout(title='Ilustrasi Distribusi Waktu Pemulihan', height=520, plot_bgcolor=plot_bg, paper_bgcolor=paper_bg, font=dict(color=font_color))
+    fig.update_layout(title='Ilustrasi Distribusi Waktu Pemulihan', height=520, template=theme_plotly)
     st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("### Tabel Ringkasan")
