@@ -10,7 +10,7 @@ from scipy.stats import kruskal, mannwhitneyu
 st.set_page_config(page_title="Dashboard Simulasi Waris Islam", page_icon="⚖️", layout="wide")
 
 # ---------------------------------------------------------------------
-# Palet Warna Kustom (Tetap Konsisten)
+# Palet Warna Kustom
 # ---------------------------------------------------------------------
 MAROON = "#7B1E2B"
 MAROON_2 = "#5E1620"
@@ -23,22 +23,18 @@ RED = "#C62828"
 GRAY = "#7A7A7A"
 
 # ---------------------------------------------------------------------
-# CSS Injeksi Menggunakan Variabel CSS Native Streamlit
+# CSS
 # ---------------------------------------------------------------------
 st.markdown(
     f"""
     <style>
-    /* Menggunakan linear-gradient konstan untuk sidebar */
     section[data-testid="stSidebar"] {{ 
         background: linear-gradient(180deg, {MAROON_2}, {MAROON}); 
     }}
-    /* Memastikan teks di dalam sidebar yang menggunakan markdown berwarna putih agar kontras */
     section[data-testid="stSidebar"] .stMarkdown, section[data-testid="stSidebar"] p, section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 {{
         color: white !important;
     }}
-    
     .block-container {{ padding-top: 1.1rem; padding-bottom: 2rem; }}
-    
     .title-card {{
         background: linear-gradient(135deg, {MAROON_2}, {MAROON});
         color: white !important; 
@@ -50,8 +46,6 @@ st.markdown(
     .title-card h1, .title-card p {{
         color: white !important;
     }}
-    
-    /* Menggunakan variabel CSS native Streamlit agar otomatis adaptif tanpa re-run */
     .sub-card {{
         background-color: var(--secondary-background-color); 
         color: var(--text-color); 
@@ -61,7 +55,6 @@ st.markdown(
         border: 1px solid var(--border-color);
         margin-bottom: 1rem;
     }}
-    
     .metric-box {{
         background-color: var(--secondary-background-color); 
         padding: 0.9rem 1rem; 
@@ -71,12 +64,9 @@ st.markdown(
         border: 1px solid var(--border-color);
         margin-bottom: 1rem;
     }}
-    
-    /* Memperbaiki visual teks metric bawaan di dalam custom box */
     .metric-box div[data-testid="stMetricValue"] {{
         color: var(--text-color) !important;
     }}
-    
     .small-note {{ color: var(--text-color); opacity: 0.8; font-size: 0.92rem; }}
     </style>
     """,
@@ -92,14 +82,19 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-st.write("") # Spacer
-
+st.write("")
 st.caption("Dashboard ini otomatis membaca hasil Monte Carlo dari CSV dan menyesuaikan kontras saat mode gelap/terang berubah.")
 
 # ---------------------------------------------------------------------
-# Load CSV with fallback
+# Fungsi Load Data dengan Upload
 # ---------------------------------------------------------------------
-def load_results():
+def load_data():
+    """Memuat data dari upload user, file lokal, atau fallback."""
+    # Cek apakah ada data di session_state dari upload sebelumnya
+    if "uploaded_data" in st.session_state and st.session_state.uploaded_data is not None:
+        return st.session_state.uploaded_data, "upload"
+
+    # Coba baca dari file lokal
     candidates = [
         Path("hasil_monte_carlo.csv"),
         Path(__file__).with_name("hasil_monte_carlo.csv") if "__file__" in globals() else Path("hasil_monte_carlo.csv"),
@@ -112,22 +107,16 @@ def load_results():
                     return df, str(p)
             except Exception:
                 pass
-    return pd.DataFrame([
+
+    # Fallback data bawaan
+    df = pd.DataFrame([
         {"Skenario": "Tanpa Koping", "T_recover_mean": 80.000, "T_recover_std": 0.000, "T_recover_p10": 80.000, "T_recover_p90": 80.000, "K_final_mean": 0.988, "K_final_std": 0.023, "K_max_mean": 1.000, "P_selesai": 0.000},
         {"Skenario": "Mediasi Preventif", "T_recover_mean": 72.249, "T_recover_std": 5.156, "T_recover_p10": 68.333, "T_recover_p90": 76.667, "K_final_mean": 0.229, "K_final_std": 0.123, "K_max_mean": 1.000, "P_selesai": 0.333},
         {"Skenario": "Mediasi Reaktif", "T_recover_mean": 65.890, "T_recover_std": 7.629, "T_recover_p10": 56.000, "T_recover_p90": 76.333, "K_final_mean": 0.634, "K_final_std": 0.067, "K_max_mean": 0.942, "P_selesai": 0.000},
         {"Skenario": "Mediator Eksternal", "T_recover_mean": 34.152, "T_recover_std": 6.799, "T_recover_p10": 25.667, "T_recover_p90": 42.700, "K_final_mean": 0.000, "K_final_std": 0.000, "K_max_mean": 1.000, "P_selesai": 1.000},
         {"Skenario": "Pendekatan Spiritual", "T_recover_mean": 54.652, "T_recover_std": 1.992, "T_recover_p10": 52.000, "T_recover_p90": 57.000, "K_final_mean": 0.000, "K_final_std": 0.000, "K_max_mean": 1.000, "P_selesai": 1.000},
-    ]), "fallback"
-
-summary_df, source_info = load_results()
-
-# Normalize columns if necessary
-expected_cols = ["Skenario", "T_recover_mean", "T_recover_std", "T_recover_p10", "T_recover_p90", "K_final_mean", "K_final_std", "K_max_mean", "P_selesai"]
-for c in expected_cols:
-    if c not in summary_df.columns:
-        summary_df[c] = np.nan
-summary_df = summary_df[expected_cols]
+    ])
+    return df, "fallback"
 
 # ---------------------------------------------------------------------
 # Sidebar
@@ -136,17 +125,44 @@ st.sidebar.markdown("## Navigasi")
 view = st.sidebar.radio("Pilih tampilan:", ["Ringkasan", "Visualisasi", "Analisis Statistik", "Data Mentah"], index=0)
 
 st.sidebar.markdown("---")
+st.sidebar.markdown("### 📂 Upload Data (CSV)")
+uploaded_file = st.sidebar.file_uploader("Unggah file hasil_monte_carlo.csv", type=["csv"])
+if uploaded_file is not None:
+    try:
+        df_upload = pd.read_csv(uploaded_file)
+        if "Skenario" in df_upload.columns:
+            st.session_state.uploaded_data = df_upload
+            st.sidebar.success("✅ Data berhasil diunggah!")
+        else:
+            st.sidebar.error("❌ Kolom 'Skenario' tidak ditemukan. Pastikan file benar.")
+    except Exception as e:
+        st.sidebar.error(f"Gagal membaca file: {e}")
+
+st.sidebar.markdown("---")
 st.sidebar.markdown("### Kontrol Tampilan")
 show_threshold = st.sidebar.checkbox("Tampilkan ambang konflik (0.7)", value=True)
 show_values = st.sidebar.checkbox("Tampilkan label angka pada grafik", value=True)
 
 st.sidebar.markdown("---")
 st.sidebar.markdown("### Sumber Data")
-st.sidebar.write(f"- CSV: `{source_info}`")
-st.sidebar.write("- Fallback: aktif bila CSV tidak ditemukan")
+# Load data
+summary_df, source = load_data()
+if source == "upload":
+    st.sidebar.write("✅ Menggunakan data dari upload")
+elif source == "fallback":
+    st.sidebar.write("📌 Menggunakan data bawaan (fallback)")
+else:
+    st.sidebar.write(f"📁 Dari file: `{source}`")
+
+# Normalize columns
+expected_cols = ["Skenario", "T_recover_mean", "T_recover_std", "T_recover_p10", "T_recover_p90", "K_final_mean", "K_final_std", "K_max_mean", "P_selesai"]
+for c in expected_cols:
+    if c not in summary_df.columns:
+        summary_df[c] = np.nan
+summary_df = summary_df[expected_cols]
 
 # ---------------------------------------------------------------------
-# Helpers
+# Helper & mapping warna
 # ---------------------------------------------------------------------
 def metric_card(label, value, delta=None):
     st.markdown('<div class="metric-box">', unsafe_allow_html=True)
@@ -165,7 +181,6 @@ best_recover = summary_df.loc[summary_df["T_recover_mean"].idxmin(), "Skenario"]
 best_finish = summary_df.loc[summary_df["K_final_mean"].idxmin(), "Skenario"]
 best_success = summary_df.loc[summary_df["P_selesai"].idxmax(), "Skenario"]
 
-# Biarkan Plotly membaca tema dasar yang sedang aktif secara otomatis
 theme_plotly = "streamlit"
 
 # ---------------------------------------------------------------------
