@@ -83,32 +83,38 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.write("")
-st.caption("Dashboard ini otomatis membaca hasil Monte Carlo dari CSV dan menyesuaikan kontras saat mode gelap/terang berubah.")
+st.caption("Dashboard otomatis membaca hasil Monte Carlo dari CSV. Jika CSV tidak ditemukan, data bawaan akan digunakan.")
 
 # ---------------------------------------------------------------------
-# Fungsi Load Data dengan Upload
+# Fungsi Load Data (Robust)
 # ---------------------------------------------------------------------
 def load_data():
-    """Memuat data dari upload user, file lokal, atau fallback."""
-    # Cek apakah ada data di session_state dari upload sebelumnya
+    """
+    Memuat data dari:
+    1. Upload user (session_state)
+    2. File lokal di direktori yang sama dengan app.py
+    3. Fallback data bawaan (jika semua gagal)
+    """
+    # Cek upload
     if "uploaded_data" in st.session_state and st.session_state.uploaded_data is not None:
         return st.session_state.uploaded_data, "upload"
-
+    
     # Coba baca dari file lokal
-    candidates = [
-        Path("hasil_monte_carlo.csv"),
-        Path(__file__).with_name("hasil_monte_carlo.csv") if "__file__" in globals() else Path("hasil_monte_carlo.csv"),
-    ]
-    for p in candidates:
-        if p.exists():
-            try:
-                df = pd.read_csv(p)
-                if "Skenario" in df.columns:
-                    return df, str(p)
-            except Exception:
-                pass
-
-    # Fallback data bawaan
+    try:
+        # Cari file di direktori yang sama dengan app.py
+        script_dir = Path(__file__).parent if "__file__" in globals() else Path.cwd()
+        csv_path = script_dir / "hasil_monte_carlo.csv"
+        
+        if csv_path.exists():
+            df = pd.read_csv(csv_path)
+            if "Skenario" in df.columns:
+                return df, str(csv_path)
+            else:
+                st.warning("⚠️ CSV ditemukan tapi tidak memiliki kolom 'Skenario'. Gunakan fallback.")
+    except Exception as e:
+        st.warning(f"⚠️ Gagal membaca CSV lokal: {e}")
+    
+    # Fallback data bawaan (agar dashboard tetap jalan)
     df = pd.DataFrame([
         {"Skenario": "Tanpa Koping", "T_recover_mean": 80.000, "T_recover_std": 0.000, "T_recover_p10": 80.000, "T_recover_p90": 80.000, "K_final_mean": 0.988, "K_final_std": 0.023, "K_max_mean": 1.000, "P_selesai": 0.000},
         {"Skenario": "Mediasi Preventif", "T_recover_mean": 72.249, "T_recover_std": 5.156, "T_recover_p10": 68.333, "T_recover_p90": 76.667, "K_final_mean": 0.229, "K_final_std": 0.123, "K_max_mean": 1.000, "P_selesai": 0.333},
@@ -148,13 +154,13 @@ st.sidebar.markdown("### Sumber Data")
 # Load data
 summary_df, source = load_data()
 if source == "upload":
-    st.sidebar.write("✅ Menggunakan data dari upload")
+    st.sidebar.success("✅ Menggunakan data dari upload")
 elif source == "fallback":
-    st.sidebar.write("📌 Menggunakan data bawaan (fallback)")
+    st.sidebar.info("📌 Menggunakan data bawaan (fallback) — CSV tidak ditemukan")
 else:
-    st.sidebar.write(f"📁 Dari file: `{source}`")
+    st.sidebar.info(f"📁 Dari file: `{source}`")
 
-# Normalize columns
+# Normalize columns agar aman
 expected_cols = ["Skenario", "T_recover_mean", "T_recover_std", "T_recover_p10", "T_recover_p90", "K_final_mean", "K_final_std", "K_max_mean", "P_selesai"]
 for c in expected_cols:
     if c not in summary_df.columns:
@@ -177,193 +183,207 @@ color_map = {
     "Pendekatan Spiritual": PURPLE,
 }
 
-best_recover = summary_df.loc[summary_df["T_recover_mean"].idxmin(), "Skenario"]
-best_finish = summary_df.loc[summary_df["K_final_mean"].idxmin(), "Skenario"]
-best_success = summary_df.loc[summary_df["P_selesai"].idxmax(), "Skenario"]
+# Cari skenario terbaik
+best_recover = summary_df.loc[summary_df["T_recover_mean"].idxmin(), "Skenario"] if not summary_df.empty else "-"
+best_finish = summary_df.loc[summary_df["K_final_mean"].idxmin(), "Skenario"] if not summary_df.empty else "-"
+best_success = summary_df.loc[summary_df["P_selesai"].idxmax(), "Skenario"] if not summary_df.empty else "-"
 
-theme_plotly = "streamlit"
+# Gunakan tema Plotly yang stabil
+theme_plotly = "plotly"  # "streamlit" support mulai plotly 5.18, "plotly" lebih aman
 
 # ---------------------------------------------------------------------
 # Ringkasan
 # ---------------------------------------------------------------------
 if view == "Ringkasan":
-    c1, c2, c3, c4 = st.columns(4)
-    with c1: metric_card("Skenario Tercepat", best_recover)
-    with c2: metric_card("K Final Terendah", best_finish)
-    with c3: metric_card("P Selesai Tertinggi", best_success)
-    with c4: metric_card("Iterasi Monte Carlo", "1000")
+    if summary_df.empty:
+        st.error("❌ Tidak ada data untuk ditampilkan. Silakan upload CSV.")
+    else:
+        c1, c2, c3, c4 = st.columns(4)
+        with c1: metric_card("Skenario Tercepat", best_recover)
+        with c2: metric_card("K Final Terendah", best_finish)
+        with c3: metric_card("P Selesai Tertinggi", best_success)
+        with c4: metric_card("Iterasi Monte Carlo", "1000")
 
-    st.markdown('<div class="sub-card">', unsafe_allow_html=True)
-    st.subheader("Inti Temuan")
-    st.write(
-        "Mediator Eksternal adalah skenario paling cepat menurunkan konflik, sedangkan Pendekatan Spiritual "
-        "memberikan hasil yang paling konsisten. Tanpa koping menghasilkan konflik tertinggi dan tidak pernah "
-        "pulih sepenuhnya."
-    )
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    left, right = st.columns([1.15, 0.85])
-    with left:
-        fig = go.Figure()
-        fig.add_trace(go.Bar(x=summary_df["Skenario"], y=summary_df["T_recover_mean"], name="T_recover_mean", marker_color=MAROON))
-        fig.add_trace(go.Bar(x=summary_df["Skenario"], y=summary_df["K_final_mean"], name="K_final_mean", marker_color=ORANGE))
-        fig.add_trace(go.Bar(x=summary_df["Skenario"], y=summary_df["P_selesai"], name="P_selesai", marker_color=GREEN))
-        if show_values:
-            fig.update_traces(texttemplate='%{y:.2f}', textposition='outside')
-        fig.update_layout(
-            barmode="group",
-            title="Perbandingan Metrik Utama",
-            height=520,
-            template=theme_plotly,
-            legend_title_text="Metrik",
-            margin=dict(l=20, r=20, t=60, b=20),
+        st.markdown('<div class="sub-card">', unsafe_allow_html=True)
+        st.subheader("Inti Temuan")
+        st.write(
+            "Mediator Eksternal adalah skenario paling cepat menurunkan konflik, sedangkan Pendekatan Spiritual "
+            "memberikan hasil yang paling konsisten. Tanpa koping menghasilkan konflik tertinggi dan tidak pernah "
+            "pulih sepenuhnya."
         )
-        if show_threshold:
-            fig.add_hline(y=0.7, line_dash="dash", line_color=RED)
-        st.plotly_chart(fig, use_container_width=True)
-        
-    with right:
-        fig2 = go.Figure()
-        fig2.add_trace(go.Scatter(
-            x=summary_df["Skenario"],
-            y=summary_df["T_recover_mean"],
-            mode='lines+markers+text' if show_values else 'lines+markers',
-            text=[f'{v:.1f}' for v in summary_df["T_recover_mean"]] if show_values else None,
-            textposition='top center',
-            line=dict(color=MAROON, width=3),
-            marker=dict(size=10),
-            name="T_recover_mean"
-        ))
-        if show_threshold:
-            fig2.add_hline(y=0.7, line_dash="dash", line_color=RED)
-        fig2.update_layout(
-            title="Rata-rata Waktu Pemulihan",
-            height=520,
-            template=theme_plotly,
-            margin=dict(l=20, r=20, t=60, b=20),
-        )
-        st.plotly_chart(fig2, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="sub-card">', unsafe_allow_html=True)
-    st.subheader("Ringkasan Cepat")
-    a, b, c = st.columns(3)
-    a.markdown(f"**Tercepat:** {best_recover}")
-    b.markdown(f"**Paling Stabil:** {best_success}")
-    c.markdown(f"**Risiko Tertinggi:** Tanpa Koping")
-    st.markdown('</div>', unsafe_allow_html=True)
+        left, right = st.columns([1.15, 0.85])
+        with left:
+            fig = go.Figure()
+            fig.add_trace(go.Bar(x=summary_df["Skenario"], y=summary_df["T_recover_mean"], name="T_recover_mean", marker_color=MAROON))
+            fig.add_trace(go.Bar(x=summary_df["Skenario"], y=summary_df["K_final_mean"], name="K_final_mean", marker_color=ORANGE))
+            fig.add_trace(go.Bar(x=summary_df["Skenario"], y=summary_df["P_selesai"], name="P_selesai", marker_color=GREEN))
+            if show_values:
+                fig.update_traces(texttemplate='%{y:.2f}', textposition='outside')
+            fig.update_layout(
+                barmode="group",
+                title="Perbandingan Metrik Utama",
+                height=520,
+                template=theme_plotly,
+                legend_title_text="Metrik",
+                margin=dict(l=20, r=20, t=60, b=20),
+            )
+            if show_threshold:
+                fig.add_hline(y=0.7, line_dash="dash", line_color=RED)
+            st.plotly_chart(fig, use_container_width=True)
+            
+        with right:
+            fig2 = go.Figure()
+            fig2.add_trace(go.Scatter(
+                x=summary_df["Skenario"],
+                y=summary_df["T_recover_mean"],
+                mode='lines+markers+text' if show_values else 'lines+markers',
+                text=[f'{v:.1f}' for v in summary_df["T_recover_mean"]] if show_values else None,
+                textposition='top center',
+                line=dict(color=MAROON, width=3),
+                marker=dict(size=10),
+                name="T_recover_mean"
+            ))
+            if show_threshold:
+                fig2.add_hline(y=0.7, line_dash="dash", line_color=RED)
+            fig2.update_layout(
+                title="Rata-rata Waktu Pemulihan",
+                height=520,
+                template=theme_plotly,
+                margin=dict(l=20, r=20, t=60, b=20),
+            )
+            st.plotly_chart(fig2, use_container_width=True)
+
+        st.markdown('<div class="sub-card">', unsafe_allow_html=True)
+        st.subheader("Ringkasan Cepat")
+        a, b, c = st.columns(3)
+        a.markdown(f"**Tercepat:** {best_recover}")
+        b.markdown(f"**Paling Stabil:** {best_success}")
+        c.markdown(f"**Risiko Tertinggi:** Tanpa Koping")
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------
 # Visualisasi
 # ---------------------------------------------------------------------
 elif view == "Visualisasi":
-    st.subheader("Visualisasi Hasil Simulasi")
-    tab1, tab2, tab3 = st.tabs(["Monte Carlo", "Single Run", "Konseptualisasi"])
+    if summary_df.empty:
+        st.error("❌ Tidak ada data untuk ditampilkan. Silakan upload CSV.")
+    else:
+        st.subheader("Visualisasi Hasil Simulasi")
+        tab1, tab2, tab3 = st.tabs(["Monte Carlo", "Single Run", "Konseptualisasi"])
 
-    with tab1:
-        c1, c2 = st.columns(2)
-        with c1:
-            fig = px.box(
-                summary_df.melt(id_vars="Skenario", value_vars=["T_recover_mean", "K_final_mean", "K_max_mean"], var_name="Metrik", value_name="Nilai"),
-                x="Skenario", y="Nilai", color="Metrik",
-                color_discrete_sequence=[MAROON, ORANGE, BLUE],
-                title="Ringkasan Distribusi Metrik"
-            )
-            fig.update_layout(height=520, template=theme_plotly)
+        with tab1:
+            c1, c2 = st.columns(2)
+            with c1:
+                fig = px.box(
+                    summary_df.melt(id_vars="Skenario", value_vars=["T_recover_mean", "K_final_mean", "K_max_mean"], var_name="Metrik", value_name="Nilai"),
+                    x="Skenario", y="Nilai", color="Metrik",
+                    color_discrete_sequence=[MAROON, ORANGE, BLUE],
+                    title="Ringkasan Distribusi Metrik"
+                )
+                fig.update_layout(height=520, template=theme_plotly)
+                st.plotly_chart(fig, use_container_width=True)
+            with c2:
+                fig = px.bar(
+                    summary_df,
+                    x="Skenario", y="P_selesai", color="Skenario",
+                    color_discrete_sequence=[MAROON, BLUE, ORANGE, PURPLE, GREEN],
+                    text="P_selesai",
+                    title="Probabilitas Resolusi (P_selesai)"
+                )
+                fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+                fig.update_layout(height=520, showlegend=False, template=theme_plotly)
+                st.plotly_chart(fig, use_container_width=True)
+
+        with tab2:
+            st.info("Di laporan, bagian ini cocok untuk grafik 4 skenario koping dan grafik efektivitas single run.")
+            fig = go.Figure()
+            for idx, sc in enumerate(summary_df["Skenario"]):
+                fig.add_trace(go.Bar(
+                    name=sc,
+                    x=["T_rec_mean", "K_final_mean", "K_max_mean"],
+                    y=[summary_df.loc[idx, "T_recover_mean"], summary_df.loc[idx, "K_final_mean"], summary_df.loc[idx, "K_max_mean"]],
+                    marker_color=color_map.get(sc, GRAY)
+                ))
+            fig.update_layout(barmode='group', title='Perbandingan Metrik Utama per Skenario', height=500, template=theme_plotly)
             st.plotly_chart(fig, use_container_width=True)
-        with c2:
-            fig = px.bar(
-                summary_df,
-                x="Skenario", y="P_selesai", color="Skenario",
-                color_discrete_sequence=[MAROON, BLUE, ORANGE, PURPLE, GREEN],
-                text="P_selesai",
-                title="Probabilitas Resolusi (P_selesai)"
-            )
-            fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
-            fig.update_layout(height=520, showlegend=False, template=theme_plotly)
+
+        with tab3:
+            st.info("State chart dan tabel atribut agen paling pas ditaruh di BAB III sebagai visual konseptual.")
+            fig = go.Figure()
+            fig.add_annotation(text="Gunakan gambar state_chart.png dan tabel_atribut.png di laporan", x=0.5, y=0.5, showarrow=False, font=dict(size=18, color=MAROON))
+            fig.update_xaxes(visible=False)
+            fig.update_yaxes(visible=False)
+            fig.update_layout(title='Konseptualisasi', height=360, template=theme_plotly)
             st.plotly_chart(fig, use_container_width=True)
-
-    with tab2:
-        st.info("Di laporan, bagian ini cocok untuk grafik 4 skenario koping dan grafik efektivitas single run.")
-        fig = go.Figure()
-        for idx, sc in enumerate(summary_df["Skenario"]):
-            fig.add_trace(go.Bar(
-                name=sc,
-                x=["T_rec_mean", "K_final_mean", "K_max_mean"],
-                y=[summary_df.loc[idx, "T_recover_mean"], summary_df.loc[idx, "K_final_mean"], summary_df.loc[idx, "K_max_mean"]],
-                marker_color=color_map.get(sc, GRAY)
-            ))
-        fig.update_layout(barmode='group', title='Perbandingan Metrik Utama per Skenario', height=500, template=theme_plotly)
-        st.plotly_chart(fig, use_container_width=True)
-
-    with tab3:
-        st.info("State chart dan tabel atribut agen paling pas ditaruh di BAB III sebagai visual konseptual.")
-        fig = go.Figure()
-        fig.add_annotation(text="Gunakan gambar state_chart.png dan tabel_atribut.png di laporan", x=0.5, y=0.5, showarrow=False, font=dict(size=18, color=MAROON))
-        fig.update_xaxes(visible=False)
-        fig.update_yaxes(visible=False)
-        fig.update_layout(title='Konseptualisasi', height=360, template=theme_plotly)
-        st.plotly_chart(fig, use_container_width=True)
 
 # ---------------------------------------------------------------------
 # Analisis Statistik
 # ---------------------------------------------------------------------
 elif view == "Analisis Statistik":
-    st.subheader("Analisis Statistik")
-    st.write("Berdasarkan output Monte Carlo, perbedaan antar skenario sangat signifikan.")
+    if summary_df.empty:
+        st.error("❌ Tidak ada data untuk ditampilkan. Silakan upload CSV.")
+    else:
+        st.subheader("Analisis Statistik")
+        st.write("Berdasarkan output Monte Carlo, perbedaan antar skenario sangat signifikan.")
 
-    c1, c2 = st.columns(2)
-    with c1:
-        metric_card("Kruskal-Wallis H", "4501.846")
-        metric_card("p-value", "0.00e+00")
-    with c2:
-        metric_card("Kesimpulan", "Signifikan")
-        metric_card("Alpha", "0.05")
+        c1, c2 = st.columns(2)
+        with c1:
+            metric_card("Kruskal-Wallis H", "4501.846")
+            metric_card("p-value", "0.00e+00")
+        with c2:
+            metric_card("Kesimpulan", "Signifikan")
+            metric_card("Alpha", "0.05")
 
-    st.markdown("### Interpretasi")
-    st.write(
-        "Seluruh pasangan skenario pada uji post-hoc Mann-Whitney U menunjukkan p-value sangat kecil, "
-        "yang berarti distribusi waktu pemulihan antar skenario berbeda secara statistik."
-    )
+        st.markdown("### Interpretasi")
+        st.write(
+            "Seluruh pasangan skenario pada uji post-hoc Mann-Whitney U menunjukkan p-value sangat kecil, "
+            "yang berarti distribusi waktu pemulihan antar skenario berbeda secara statistik."
+        )
 
-    fig = go.Figure()
-    for sc in summary_df["Skenario"]:
-        mean_val = summary_df.loc[summary_df['Skenario'] == sc, 'T_recover_mean'].values[0]
-        std_val = max(summary_df.loc[summary_df['Skenario'] == sc, 'T_recover_std'].values[0], 0.8)
-        y = np.random.normal(mean_val, std_val, 120)
-        fig.add_trace(go.Box(y=y, name=sc, marker_color=color_map.get(sc, GRAY)))
-    fig.update_layout(title='Ilustrasi Distribusi Waktu Pemulihan', height=520, template=theme_plotly)
-    st.plotly_chart(fig, use_container_width=True)
+        fig = go.Figure()
+        for sc in summary_df["Skenario"]:
+            mean_val = summary_df.loc[summary_df['Skenario'] == sc, 'T_recover_mean'].values[0]
+            std_val = max(summary_df.loc[summary_df['Skenario'] == sc, 'T_recover_std'].values[0], 0.8)
+            y = np.random.normal(mean_val, std_val, 120)
+            fig.add_trace(go.Box(y=y, name=sc, marker_color=color_map.get(sc, GRAY)))
+        fig.update_layout(title='Ilustrasi Distribusi Waktu Pemulihan', height=520, template=theme_plotly)
+        st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("### Tabel Ringkasan")
-    st.dataframe(
-        summary_df.style.format({
-            "T_recover_mean": "{:.3f}",
-            "T_recover_std": "{:.3f}",
-            "T_recover_p10": "{:.3f}",
-            "T_recover_p90": "{:.3f}",
-            "K_final_mean": "{:.3f}",
-            "K_final_std": "{:.3f}",
-            "K_max_mean": "{:.3f}",
-            "P_selesai": "{:.3f}",
-        }),
-        use_container_width=True
-    )
+        st.markdown("### Tabel Ringkasan")
+        st.dataframe(
+            summary_df.style.format({
+                "T_recover_mean": "{:.3f}",
+                "T_recover_std": "{:.3f}",
+                "T_recover_p10": "{:.3f}",
+                "T_recover_p90": "{:.3f}",
+                "K_final_mean": "{:.3f}",
+                "K_final_std": "{:.3f}",
+                "K_max_mean": "{:.3f}",
+                "P_selesai": "{:.3f}",
+            }),
+            use_container_width=True
+        )
 
 # ---------------------------------------------------------------------
 # Data Mentah
 # ---------------------------------------------------------------------
 elif view == "Data Mentah":
-    st.subheader("Data Ringkasan dari CSV")
-    st.dataframe(summary_df, use_container_width=True)
-    csv = summary_df.to_csv(index=False).encode('utf-8')
-    st.download_button("Download CSV", csv, file_name="hasil_monte_carlo_ringkas.csv", mime="text/csv")
+    if summary_df.empty:
+        st.error("❌ Tidak ada data untuk ditampilkan. Silakan upload CSV.")
+    else:
+        st.subheader("Data Ringkasan dari CSV")
+        st.dataframe(summary_df, use_container_width=True)
+        csv = summary_df.to_csv(index=False).encode('utf-8')
+        st.download_button("Download CSV", csv, file_name="hasil_monte_carlo_ringkas.csv", mime="text/csv")
 
-    st.markdown("### Catatan Penempatan Visual dalam Laporan")
-    st.write("- State chart: BAB III, bagian metodologi/konseptualisasi.")
-    st.write("- Tabel atribut: BAB III, setelah penjelasan state chart.")
-    st.write("- Grafik 4 skenario koping: BAB IV, hasil simulasi single run.")
-    st.write("- Grafik Monte Carlo: BAB IV, setelah pembahasan simulasi iteratif.")
-    st.write("- Grafik analisis statistik: BAB IV, bagian analitik dan trade-off.")
+        st.markdown("### Catatan Penempatan Visual dalam Laporan")
+        st.write("- State chart: BAB III, bagian metodologi/konseptualisasi.")
+        st.write("- Tabel atribut: BAB III, setelah penjelasan state chart.")
+        st.write("- Grafik 4 skenario koping: BAB IV, hasil simulasi single run.")
+        st.write("- Grafik Monte Carlo: BAB IV, setelah pembahasan simulasi iteratif.")
+        st.write("- Grafik analisis statistik: BAB IV, bagian analitik dan trade-off.")
 
 st.markdown("---")
 st.caption("Streamlit Dashboard • Tema Maroon • ABM Waris Islam")
